@@ -723,6 +723,7 @@ ogg_open (SF_PRIVATE *psf)
 	{	case SF_FORMAT_OGG | SF_FORMAT_VORBIS :
 			return ogg_vorbis_open (psf) ;
 
+#if 0
 		case SF_FORMAT_OGGFLAC :
 			/* Reset everything to an initial state. */
 			ogg_sync_clear (&odata->osync) ;
@@ -735,6 +736,7 @@ ogg_open (SF_PRIVATE *psf)
 
 		case SF_FORMAT_OGG | SF_FORMAT_OPUS :
 			return ogg_opus_open (psf) ;
+#endif
 
 #if ENABLE_EXPERIMENTAL_CODE
 		case SF_FORMAT_OGG | SF_FORMAT_SPEEX :

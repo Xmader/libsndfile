@@ -3158,9 +3158,9 @@ psf_open_file (SF_PRIVATE *psf, SF_INFO *sfinfo)
 				error = avr_open (psf) ;
 				break ;
 
-		case	SF_FORMAT_FLAC :
-				error = flac_open (psf) ;
-				break ;
+		// case	SF_FORMAT_FLAC :
+		// 		error = flac_open (psf) ;
+		// 		break ;
 
 		case	SF_FORMAT_CAF :
 				error = caf_open (psf) ;
