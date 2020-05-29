@@ -38,7 +38,7 @@ add_library (sndfile STATIC
 	avr.c
 	caf.c
 	dwd.c
-	# flac.c
+	flac.c
 	g72x.c
 	htk.c
 	ircam.c
