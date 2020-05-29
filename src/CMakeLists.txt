@@ -113,3 +113,7 @@ add_library (sndfile STATIC
 	sndfile.h
 	config.h
     )
+
+set_property(SOURCE sndfile.hh PROPERTY SKIP_AUTOMOC ON)
+set_property(SOURCE sndfile.hh PROPERTY SKIP_AUTOUIC ON)
+set_property(SOURCE sndfile.hh PROPERTY SKIP_AUTOGEN ON)
