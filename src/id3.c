@@ -29,7 +29,7 @@
 #include	"id3.h"
 
 #if HAVE_MPEG
-#include	<lame/lame.h>
+#include	<lame.h>
 
 struct id3v1_genre_handler_userdata
 {	int number ;

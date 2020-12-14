@@ -25,7 +25,7 @@
 
 #if HAVE_MPEG
 
-#include <lame/lame.h>
+#include <lame.h>
 
 /*
  * RANT RANT RANT
