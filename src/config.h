@@ -43,6 +43,9 @@
 /* Will be set to 1 if flac, ogg and vorbis are available. */
 #define HAVE_EXTERNAL_XIPH_LIBS 1
 
+/* Will be set to 1 if lame and mpg123 are available. */
+#define HAVE_MPEG 1
+
 /* Define to 1 if you have the `floor' function. */
 #define HAVE_FLOOR 1
 
@@ -197,7 +200,7 @@
 #define PACKAGE_NAME "libsndfile"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "libsndfile 1.0.29pre2"
+#define PACKAGE_STRING "libsndfile 1.0.31pre1"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "libsndfile"
@@ -206,7 +209,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.0.29pre2"
+#define PACKAGE_VERSION "1.0.31pre1"
 
 /* Set to maximum allowed value of sf_count_t type. */
 #define SF_COUNT_MAX 0x7FFFFFFFFFFFFFFFLL
@@ -288,7 +291,7 @@
 #define USE_WINDOWS_API 0
 
 /* Version number of package */
-#define VERSION "1.0.29"
+#define VERSION "1.0.31"
 
 /* Set to 1 if windows DLL is being built. */
 #define WIN32_TARGET_DLL 0

@@ -31,6 +31,7 @@ add_library (sndfile STATIC
 	ogg.c
 	chanmap.h
 	chanmap.c
+	id3.h
 	id3.c
 	sndfile.c
 	aiff.c
@@ -67,8 +68,12 @@ add_library (sndfile STATIC
 	ogg_speex.c
 	ogg_pcm.c
 	# ogg_opus.c
+	ogg_vcomment.h
 	ogg_vcomment.c
 	nms_adpcm.c
+	mp3.c
+	# mpeg_decode.c
+	mpeg_l3_encode.c
 	GSM610/config.h
 	GSM610/gsm.h
 	GSM610/gsm610_priv.h
