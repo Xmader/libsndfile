@@ -27,6 +27,12 @@
 #include	"sfendian.h"
 #include	"common.h"
 
+#if HAVE_UNISTD_H
+#include <unistd.h>
+#elif defined _WIN32
+#include <io.h>
+#endif
+
 #define		SNDFILE_MAGICK	0x1234C0DE
 
 #ifdef __APPLE__
@@ -36,13 +42,13 @@
 	*/
 	#ifdef __BIG_ENDIAN__
 		#if (CPU_IS_LITTLE_ENDIAN == 1)
-			#error "Universal binary compile detected. See http://www.mega-nerd.com/libsndfile/FAQ.html#Q018"
+			#error "Universal binary compile detected. See http://libsndfile.github.io/libsndfile/FAQ.html#Q018"
 		#endif
 	#endif
 
 	#ifdef __LITTLE_ENDIAN__
 		#if (CPU_IS_BIG_ENDIAN == 1)
-			#error "Universal binary compile detected. See http://www.mega-nerd.com/libsndfile/FAQ.html#Q018"
+			#error "Universal binary compile detected. See http://libsndfile.github.io/libsndfile/FAQ.html#Q018"
 		#endif
 	#endif
 #endif
@@ -271,7 +277,9 @@ ErrorStruct SndfileErrors [] =
 	{	SFE_FILENAME_TOO_LONG	, "Error : Supplied filename too long." },
 	{	SFE_NEGATIVE_RW_LEN		, "Error : Length parameter passed to read/write is negative." },
 
-	{	SFE_OPUS_BAD_SAMPLERATE	, "Error : Opus only supports sample rates of 8000, 12000, 16000, 24000 and 48000." },
+	{	SFE_OPUS_BAD_SAMPLERATE	, "Error : Opus only supports sample rates of 8000, 12000, 16000, 24000, and 48000." },
+
+	{	SFE_MPEG_BAD_SAMPLERATE	, "Error : MPEG-1/2/2.5 only supports sample rates of 8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, and 48000." },
 
 	{	SFE_MAX_ERROR			, "Maximum error number." },
 	{	SFE_MAX_ERROR + 1		, NULL }
@@ -356,14 +364,21 @@ sf_open	(const char *path, int mode, SF_INFO *sfinfo)
 SNDFILE*
 sf_open_fd	(int fd, int mode, SF_INFO *sfinfo, int close_desc)
 {	SF_PRIVATE 	*psf ;
+	SNDFILE		*result ;
 
 	if ((SF_CONTAINER (sfinfo->format)) == SF_FORMAT_SD2)
 	{	sf_errno = SFE_SD2_FD_DISALLOWED ;
+		if (close_desc)
+			close (fd) ;
+
 		return	NULL ;
 		} ;
 
 	if ((psf = psf_allocate ()) == NULL)
 	{	sf_errno = SFE_MALLOC_FAILED ;
+		if (close_desc)
+			close (fd) ;
+
 		return	NULL ;
 		} ;
 
@@ -375,10 +390,11 @@ sf_open_fd	(int fd, int mode, SF_INFO *sfinfo, int close_desc)
 	psf->is_pipe = psf_is_pipe (psf) ;
 	psf->fileoffset = psf_ftell (psf) ;
 
-	if (! close_desc)
-		psf->file.do_not_close_descriptor = SF_TRUE ;
+	result = psf_open_file (psf, sfinfo) ;
+	if (result != NULL && ! close_desc)
+			psf->file.do_not_close_descriptor = SF_TRUE ;
 
-	return psf_open_file (psf, sfinfo) ;
+	return result ;
 } /* sf_open_fd */
 
 SNDFILE*
@@ -870,6 +886,16 @@ sf_format_check	(const SF_INFO *info)
 				if (subformat == SF_FORMAT_FLOAT || subformat == SF_FORMAT_DOUBLE)
 					return 1 ;
 				break ;
+
+		case SF_FORMAT_MP3 :
+				if (info->channels > 2)
+					return 0 ;
+				if (endian != SF_ENDIAN_FILE)
+					return 0 ;
+				/* TODO */
+				if (subformat == SF_FORMAT_MPEG_LAYER_I || subformat == SF_FORMAT_MPEG_LAYER_II || subformat == SF_FORMAT_MPEG_LAYER_III)
+					return 1 ;
+				break ;
 		default : break ;
 		} ;
 
@@ -897,7 +923,7 @@ int
 sf_command	(SNDFILE *sndfile, int command, void *data, int datasize)
 {	SF_PRIVATE *psf = (SF_PRIVATE *) sndfile ;
 	double quality ;
-    double latency ;
+	double latency ;
 	int old_value ;
 
 	/* This set of commands do not need the sndfile parameter. */
@@ -1377,12 +1403,12 @@ sf_command	(SNDFILE *sndfile, int command, void *data, int datasize)
 			quality = 1.0 - SF_MAX (0.0, SF_MIN (1.0, quality)) ;
 			return sf_command (sndfile, SFC_SET_COMPRESSION_LEVEL, &quality, sizeof (quality)) ;
 
-        case SFC_SET_OGG_PAGE_LATENCY_MS :
-            if (data == NULL || datasize != sizeof (double))
-                return SF_FALSE ;
+		case SFC_SET_OGG_PAGE_LATENCY_MS :
+			if (data == NULL || datasize != sizeof (double))
+				return SF_FALSE ;
 
-            latency = *((double *) data) ;
-            return sf_command (sndfile, SFC_SET_OGG_PAGE_LATENCY, &latency, sizeof (latency)) ;
+			latency = *((double *) data) ;
+			return sf_command (sndfile, SFC_SET_OGG_PAGE_LATENCY, &latency, sizeof (latency)) ;
 
 		default :
 			/* Must be a file specific command. Pass it on. */
@@ -2762,7 +2788,16 @@ guess_file_type (SF_PRIVATE *psf)
 	if (buffer [0] == MAKE_MARKER ('R', 'F', '6', '4') && buffer [2] == MAKE_MARKER ('W', 'A', 'V', 'E'))
 		return SF_FORMAT_RF64 ;
 
-	if (buffer [0] == MAKE_MARKER ('I', 'D', '3', 3))
+	if ((buffer [0] & MAKE_MARKER (0xFF, 0xE0, 0, 0)) == MAKE_MARKER (0xFF, 0xE0, 0, 0) && /* Frame sync */
+		(buffer [0] & MAKE_MARKER (0, 0x18, 0, 0)) != MAKE_MARKER (0, 0x08, 0, 0) && /* Valid MPEG version */
+		(buffer [0] & MAKE_MARKER (0, 0x06, 0, 0)) != MAKE_MARKER (0, 0, 0, 0) && /* Valid layer description */
+		(buffer [0] & MAKE_MARKER (0, 0, 0xF0, 0)) != MAKE_MARKER (0, 0, 0xF0, 0) && /* Valid bitrate */
+		(buffer [0] & MAKE_MARKER (0, 0, 0x0C, 0)) != MAKE_MARKER (0, 0, 0x0C, 0)) /* Valid samplerate */
+		return SF_FORMAT_MP3 ;
+
+	if (buffer [0] == MAKE_MARKER ('I', 'D', '3', 2) ||
+		buffer [0] == MAKE_MARKER ('I', 'D', '3', 3) ||
+		buffer [0] == MAKE_MARKER ('I', 'D', '3', 4))
 	{	psf_log_printf (psf, "Found 'ID3' marker.\n") ;
 		if (id3_skip (psf))
 			return guess_file_type (psf) ;
@@ -3170,6 +3205,10 @@ psf_open_file (SF_PRIVATE *psf, SF_INFO *sfinfo)
 				error = mpc2k_open (psf) ;
 				break ;
 
+		case	SF_FORMAT_MP3 :
+				error = mp3_open (psf) ;
+				break ;
+
 		/* Lite remove end */
 
 		default :
@@ -3190,6 +3229,7 @@ psf_open_file (SF_PRIVATE *psf, SF_INFO *sfinfo)
 				/* Actual embedded files. */
 				break ;
 
+			case SF_FORMAT_MP3 :
 			case SF_FORMAT_FLAC :
 				/* Flac with an ID3v2 header? */
 				break ;

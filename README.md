@@ -1,7 +1,6 @@
 # libsndfile
 
-[![Build Status](https://secure.travis-ci.org/erikd/libsndfile.svg?branch=master)](http://travis-ci.org/erikd/libsndfile)
-[![Build status](https://ci.appveyor.com/api/projects/status/github/erikd/libsndfile?branch=master?svg=true)](https://ci.appveyor.com/project/Erik13183/libsndfile)
+![C/C++ CI](https://github.com/libsndfile/libsndfile/workflows/C/C++%20CI/badge.svg)
 
 libsndfile is a C library for reading and writing files containing sampled audio
 data.
@@ -9,17 +8,17 @@ data.
 ## Hacking
 
 The canonical source code repository for libsndfile is at
-[https://github.com/erikd/libsndfile/][github].
+[http://libsndfile.github.io/libsndfile/][github].
 
 You can grab the source code using:
 
-    git clone git://github.com/erikd/libsndfile.git
+    git clone https://github.com/libsndfile/libsndfile.git
 
 For building for Android see [BuildingForAndroid][BuildingForAndroid].
 
-There are currently two build systems; the official GNU autotool based one and
-a more limited and experimental CMake based build system. Use of the CMake build
-system is documented below.
+There are currently two build systems: the traditional GNU autotool based one and
+modern CMake based build system. Use of the CMake build system is documented
+below.
 
 Setting up a build environment for libsndfile on Debian or Ubuntu is as simple as:
 
@@ -31,7 +30,7 @@ although the package install tools and package names may be slightly different.
 
 Similarly on Mac OS X, assuming [brew] is already installed:
 
-    brew install autoconf autogen automake flac libogg libtool libvorbis libopus pkg-config
+    brew install autoconf autogen automake flac libogg libtool libvorbis opus pkg-config
 
 Once the build environment has been set up, building and testing libsndfile is
 as simple as:
@@ -43,8 +42,8 @@ as simple as:
 
 ## The CMake build system
 
-Although Autotools is the primary and recommended build toolchain, experimental
-CMake meta build generator is also available. The build process with CMake takes
+Although Autotools is the primary and recommended build toolchain, CMake meta
+build generator is also available. The build process with CMake takes
 place in two stages. First, standard build files are created from configuration
 scripts. Then the platform's native build tools are used for the actual
 building. CMake can produce Microsoft Visual Studio project and solution files,
@@ -134,12 +133,18 @@ You can pass additional options with `/D<parameter>=<value>` when you run
 * `ENABLE_CPACK` - enable [CPack](https://cmake.org/cmake/help/latest/module/CPack.html) support.
   This option is `ON` by default.
 * `ENABLE_PACKAGE_CONFIG` - generate and install [package config file](https://cmake.org/cmake/help/latest/manual/cmake-packages.7.html#config-file-packages).
-  This option is `ON` by default.
-* `ENABLE_STATIC_RUNTIME` - enable static runtime on Windows platform, `OFF` by
-  default.
+* `INSTALL_PKGCONFIG_MODULE` - generate and install [pkg-config module](https://people.freedesktop.org/~dbn/pkg-config-guide.html).
+* `INSTALL_MANPAGES` - install [man pages](https://en.wikipedia.org/wiki/Man_page) for programs. This option is `ON` by  default
+  
+* `ENABLE_STATIC_RUNTIME` - enable static runtime on Windows platform (MSVC and
+  MinGW), `OFF` by default.
 
-  **Note**: For MSVC compiler this option is depecated. Use `CMAKE_MSVC_RUNTIME_LIBRARY`
-  option instead (CMake >= 3.15).
+  **Note**: For MSVC compiler this option is deprecated for CMake >= 3.15, see
+  policy [CMP0091](https://cmake.org/cmake/help/latest/policy/CMP0091.html).
+  Use `CMAKE_MSVC_RUNTIME_LIBRARY` option instead.
+
+  **Note**: For MinGW toolchain this option is experimental. If you enabled it
+  and then disabled again, you need to clear CMake cache (delete CMakeCache.txt).
 * `ENABLE_COMPATIBLE_LIBSNDFILE_NAME` - set DLL name to `libsndfile-1.dll`
   (canonical name) on Windows platform, `sndfile.dll` otherwise, `OFF` by
   default. Library name can be different depending on platform. The well known
@@ -162,9 +167,9 @@ Deprecated options:
 
 ### Linking from CMake projects
 
-First you need to add `FindOgg.cmake`, `FindVorbis.cmake`, `FindVorbisEnc.cmake`,
- `FindFLAC.cmake` and `FindOpus.cmake` files to some directory inside your CMake
- project (usually `cmake`) and add it to `CMAKE_MODULE_PATH`:
+First you need to add `FindOgg.cmake`, `FindVorbis.cmake`, `FindFLAC.cmake` and
+`FindOpus.cmake` files to some directory inside your CMake project (usually
+`cmake`) and add it to `CMAKE_MODULE_PATH`:
 
     project(SomeApplication)
     
@@ -199,8 +204,50 @@ To link `libsndfile` library use:
 
 ### Notes for Windows users
 
-First advice - set `ENABLE_STATIC_RUNTIME` to ON. This will remove dependencies
-on runtime DLLs.
+#### System CRT library
+
+First advice about Visual Studio [system CRT libraries](https://docs.microsoft.com/en-us/cpp/c-runtime-library/c-run-time-library-reference?view=vs-2019),
+it is system code linked as static or dynamic library to every C application.
+
+You can find related option in Visual Studio project properties:
+
+    C/C++ -> Code Generation -> Runtime Library
+
+Dynamic version of system CRT library is defaut and it means that end user needs
+to have the same runtime library installed on his system. Most likely it is so,
+but if it is not, the user will see this error message using libsndfile DLL:
+
+    "The program can't start because <crt-dll-name>.dll is missing from your computer. Try reinstalling the program to fix this problem. "
+
+To avoid this, you may want to enable static CRT library linking. In this case
+the size of your DLL will increase slightly the size will increase slightly, but
+you can redistribute the libsndfile DLL without having to install the correct
+version of the system CRT library.
+
+CMake project will use dynamic system CRT libraries by default, just like
+Visual Studio does. But you can change it using `ENABLE_STATIC_RUNTIME` or
+`CMAKE_MSVC_RUNTIME_LIBRARY` options.
+
+**Note**: You cannot use both options at the same time, it will lead to a
+configuration error.
+
+If you have CMake >= 3.15 you should use
+[`CMAKE_MSVC_RUNTIME_LIBRARY`](https://cmake.org/cmake/help/v3.15/variable/CMAKE_MSVC_RUNTIME_LIBRARY.html) option.
+
+This will enable static linking:
+
+    cmake .. -D"MultiThreaded$<$<CONFIG:Debug>:Debug>"
+
+You can use libsndfile `ENABLE_STATIC_RUNTIME` option to to control CRT library
+linking for CMake project: `OFF` or unset (default) for dynamic, and `ON` for
+static linking:
+
+    cmake .. -DENABLE_STATIC_RUNTIME=ON
+
+**Note**: This option is deprecated and may be removed in far future because we
+have standard option `CMAKE_MSVC_RUNTIME_LIBRARY` now.
+
+#### Using Vcpkg package manager
 
 Second advice is about Ogg, Vorbis FLAC and Opus support. Searching external
 libraries under Windows is a little bit tricky. The best way is to use
@@ -219,10 +266,14 @@ You also need to set `VCPKG_TARGET_TRIPLET` because you use static libraries:
 
     -DVCPKG_TARGET_TRIPLET=x64-windows-static
 
+**Note**: Use must use the same CRT library for external libraries and the
+libsndfile library itself. For `*-static` triplets Vcpkg uses
+[static CRT](https://vcpkg.readthedocs.io/en/latest/users/triplets/).
+
 ## Submitting Patches
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 [brew]: http://brew.sh/
-[github]: https://github.com/erikd/libsndfile/
-[BuildingForAndroid]: https://github.com/erikd/libsndfile/blob/master/Building-for-Android.md
+[github]: http://libsndfile.github.io/libsndfile/
+[BuildingForAndroid]: https://github.com/libsndfile/libsndfile/blob/master/Building-for-Android.md

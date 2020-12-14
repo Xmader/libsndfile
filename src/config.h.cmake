@@ -43,6 +43,9 @@
 /* Will be set to 1 if flac, ogg and vorbis are available. */
 #cmakedefine01 HAVE_EXTERNAL_XIPH_LIBS
 
+/* Will be set to 1 if lame and mpg123 are available. */
+#cmakedefine01 HAVE_MPEG
+
 /* Define to 1 if you have the `floor' function. */
 #cmakedefine01 HAVE_FLOOR
 
@@ -258,9 +261,6 @@
 
 /* The size of `wchar_t', as computed by sizeof. */
 @SIZEOF_WCHAR_T_CODE@
-
-/* Define to 1 if you have the ANSI C header files. */
-#cmakedefine01 STDC_HEADERS
 
 /* Set to long if unknown. */
 #define TYPEOF_SF_COUNT_T @TYPEOF_SF_COUNT_T@

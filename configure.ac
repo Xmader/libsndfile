@@ -1,10 +1,10 @@
-dnl Copyright (C) 1999-2019  Erik de Castro Lopo <erikd@mega-nerd.com>.
+dnl Copyright (C) 1999-2020  Erik de Castro Lopo <erikd@mega-nerd.com>.
 
 dnl Require autoconf version >= 2.69
 AC_PREREQ([2.69])
 
-AC_INIT([libsndfile],[1.0.29pre2],[sndfile@mega-nerd.com],
-		[libsndfile],[http://www.mega-nerd.com/libsndfile/])
+AC_INIT([libsndfile],[1.0.30],[sndfile@mega-nerd.com],
+		[libsndfile],[http://libsndfile.github.io/libsndfile/])
 
 dnl Check whether we want to set defaults for CFLAGS, CXXFLAGS, CPPFLAGS and LDFLAGS
 AC_MSG_CHECKING([whether configure should try to set CFLAGS/CXXFLAGS/CPPFLAGS/LDFLAGS])
@@ -152,6 +152,9 @@ AC_ARG_ENABLE([alsa],
 AC_ARG_ENABLE([external-libs],
 	[AS_HELP_STRING([--disable-external-libs], [disable use of FLAC, Ogg and Vorbis [[default=no]]])])
 
+AC_ARG_ENABLE([mpeg],
+	[AS_HELP_STRING([--disable-mpeg], [disable use of LAME/MPG123 for MPEG (MP3) [[defaults=no]]])])
+
 AC_ARG_ENABLE(octave,
 	[AS_HELP_STRING([--enable-octave], [enable building of GNU Octave module])])
 
@@ -162,6 +165,16 @@ AM_CONDITIONAL([FULL_SUITE], [test "x$enable_full_suite" != "xno"])
 AC_ARG_ENABLE([test-coverage],
 	[AS_HELP_STRING([--enable-test-coverage], [enable test coverage])])
 AM_CONDITIONAL([ENABLE_TEST_COVERAGE], [test "x$enable_test_coverage" = "xyes"])
+
+AC_ARG_ENABLE([ossfuzzers],
+  [AS_HELP_STRING([--enable-ossfuzzers],
+    [Whether to generate the fuzzers for OSS-Fuzz])],
+  [have_ossfuzzers=yes], [have_ossfuzzers=no])
+AM_CONDITIONAL([USE_OSSFUZZERS], [test "x$have_ossfuzzers" = "xyes"])
+
+AC_SUBST([LIB_FUZZING_ENGINE])
+AM_CONDITIONAL([USE_OSSFUZZ_FLAG], [test "x$LIB_FUZZING_ENGINE" = "x-fsanitize=fuzzer"])
+AM_CONDITIONAL([USE_OSSFUZZ_STATIC], [test -f "$LIB_FUZZING_ENGINE"])
 
 dnl ====================================================================================
 dnl  Check types and their sizes.
@@ -383,6 +396,51 @@ AS_IF([test -n "$PKG_CONFIG"], [
 AC_DEFINE_UNQUOTED([HAVE_EXTERNAL_XIPH_LIBS], [$HAVE_EXTERNAL_XIPH_LIBS], [Will be set to 1 if flac, ogg, vorbis, and opus are available.])
 
 dnl ====================================================================================
+dnl  Check for MPEG libraris liblame
+
+ac_cv_lame="no"
+ac_cv_mpg123="no"
+HAVE_MPEG=0
+MPEG_CFLAGS=""
+MPEG_LIBS=""
+
+AS_IF([test -n "$PKG_CONFIG"], [
+		AS_IF([test "x$enable_mpeg" = "xno"], [
+				AC_MSG_WARN([[*** MPEG (Lame/MPG123) disabled. ***]])
+			], [
+				AC_CHECK_HEADER(lame/lame.h,
+								lame_header_found="yes",
+								lame_header_found="no")
+				AC_SEARCH_LIBS(lame_set_VBR_q, [lame mp3lame], [lame_lib_found="yes"], [lame_lib_found="no"])
+				AS_IF([test "x$lame_lib_found$lame_header_found" = "xyesyes"], [
+						ac_cv_lame="yes"
+					], [
+						AC_MSG_WARN([["MPEG support selected but external Lame library cannot be found.]])
+					])
+
+				PKG_CHECK_MOD_VERSION([MPG123], [libmpg123 >= 1.25.10], [
+						ac_cv_mpg123="yes"
+					], [
+						AC_MSG_WARN([["MPEG support selected but external MPG123 library cannot be found.]])
+					])
+
+				AS_IF([test "x$ac_cv_lame$ac_cv_mpg123" = "xyesyes"], [
+						enable_mpeg="yes"
+						HAVE_MPEG=1
+						MPEG_CFLAGS="$MPG123_CFLAGS"
+						MPEG_LIBS="$MPG123_LIBS"
+					], [
+						enable_mpeg="no"
+						AS_ECHO([""])
+						AC_MSG_WARN([[*** MPEG support disabled.]])
+						AS_ECHO([""])
+					])
+			])
+	])
+
+AC_DEFINE_UNQUOTED([HAVE_MPEG], [$HAVE_MPEG], [Will be set to 1 if lame, mpg123 mpeg support is available.])
+
+dnl ====================================================================================
 dnl  Check for libsqlite3 (only used in regtest).
 
 ac_cv_sqlite3=0
@@ -599,8 +657,6 @@ AS_IF([test "x$ax_cv_c_compiler_vendor" = "xgnu"], [
 				temp_CFLAGS=`echo $CFLAGS | $SED "s/-Wall -pedantic//" | $SED "s/-Wshadow//" | $SED "s/-Waggregate-return//"`
 				CFLAGS=$temp_CFLAGS
 				SHLIB_VERSION_ARG="-Wl,-exported_symbols_list -Wl,\$(top_srcdir)/src/Symbols.darwin"],
-			[linux*|kfreebsd*-gnu*|gnu*], [
-				SHLIB_VERSION_ARG="-Wl,--version-script=\$(top_srcdir)/src/Symbols.gnu-binutils"],
 			[mingw*], [
 				SHLIB_VERSION_ARG="-Wc,-static-libgcc -Wl,\$(top_srcdir)/src/libsndfile-1.def"
 				win32_target_dll=1
@@ -615,6 +671,8 @@ AS_IF([test "x$ax_cv_c_compiler_vendor" = "xgnu"], [
 
 		COMPILER_IS_GCC=1
 	])
+
+AS_CASE([$host_os], [linux*|kfreebsd*-gnu*|gnu*],  [SHLIB_VERSION_ARG="-Wl,--version-script=\$(top_srcdir)/src/Symbols.gnu-binutils"])
 
 AC_DEFINE_UNQUOTED([WIN32_TARGET_DLL], [${win32_target_dll}], [Set to 1 if windows DLL is being built.])
 AC_DEFINE_UNQUOTED([COMPILER_IS_GCC], [${COMPILER_IS_GCC}], [Set to 1 if the compile is GNU GCC.])
@@ -660,6 +718,7 @@ AC_SUBST(GEN_TOOL)
 AC_SUBST(WIN_RC_VERSION)
 
 AC_SUBST(HAVE_EXTERNAL_XIPH_LIBS)
+AC_SUBST(HAVE_MPEG)
 AC_SUBST(OS_SPECIFIC_CFLAGS)
 AC_SUBST(OS_SPECIFIC_LINKS)
 AC_SUBST(SNDIO_LIBS)
@@ -667,14 +726,18 @@ AC_SUBST(SNDIO_LIBS)
 AC_SUBST(EXTERNAL_XIPH_CFLAGS)
 AC_SUBST(EXTERNAL_XIPH_LIBS)
 AC_SUBST(EXTERNAL_XIPH_REQUIRE)
+AC_SUBST(MPG123_CFLAGS)
+AC_SUBST(MPG123_LIBS)
+AC_SUBST(MPEG_CFLAGS)
+AC_SUBST(MPEG_LIBS)
 AC_SUBST(SRC_BINDIR)
 AC_SUBST(TEST_BINDIR)
 
 AC_CONFIG_FILES([
 	Makefile Octave/Makefile
-	src/version-metadata.rc src/sndfile.h
+	src/version-metadata.rc include/sndfile.h
 	tests/test_wrapper.sh tests/pedantic-header-test.sh
-	doc/libsndfile.css libsndfile.spec sndfile.pc
+	libsndfile.spec sndfile.pc
 	Scripts/build-test-tarball.mk
 	])
 AC_OUTPUT
@@ -712,6 +775,7 @@ AC_MSG_RESULT([
     Experimental code : ................... ${enable_experimental:-no}
     Using ALSA in example programs : ...... ${enable_alsa:-no}
     External FLAC/Ogg/Vorbis/Opus : ....... ${enable_external_libs:-no}
+    External MPEG Lame/MPG123 : ........... ${enable_mpeg:-no}
     Building Octave interface : ........... ${OCTAVE_BUILD}
 
   Tools :

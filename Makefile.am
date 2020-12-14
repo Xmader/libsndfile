@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 
-AM_CPPFLAGS = -I$(top_srcdir)/src $(OS_SPECIFIC_CFLAGS)
+AM_CPPFLAGS = -I$(top_srcdir)/src -I$(top_srcdir)/include -I$(top_builddir)/include $(OS_SPECIFIC_CFLAGS)
 
 DISTCHECK_CONFIGURE_FLAGS = --enable-werror
 
@@ -19,12 +19,14 @@ EXTRA_DIST = libsndfile.spec.in sndfile.pc.in Scripts/android-configure.sh \
 cmake_files = cmake/ClipMode.cmake cmake/FindFLAC.cmake \
 	cmake/CMakeAutoGen.cmake cmake/CMakeAutoGenScript.cmake \
 	cmake/FindOgg.cmake cmake/FindVorbis.cmake cmake/FindSndio.cmake \
-	cmake/FindSpeex.cmake cmake/FindSQLite3.cmake cmake/FindVorbisEnc.cmake \
+	cmake/FindSpeex.cmake cmake/sqlite/FindSQLite3.cmake \
 	cmake/SndFileChecks.cmake cmake/TestInline.cmake \
 	cmake/TestLargeFiles.cmake cmake/TestInline.c.in \
 	cmake/FindOpus.cmake cmake/SndFileConfig.cmake.in
 
 pkgconfig_DATA = sndfile.pc
+
+noinst_PROGRAMS =
 
 #===============================================================================
 
@@ -41,7 +43,7 @@ BUILT_SOURCES = src/test_endswap.c
 
 SYMBOL_FILES = src/Symbols.gnu-binutils src/Symbols.darwin src/libsndfile-1.def src/Symbols.os2 src/Symbols.static
 
-EXTRA_DIST += src/sndfile.h.in src/config.h.in src/test_endswap.tpl src/test_endswap.def \
+EXTRA_DIST += include/sndfile.h.in src/config.h.in src/test_endswap.tpl src/test_endswap.def \
 	$(SYMBOL_FILES) src/create_symbols_file.py src/binheader_writef_check.py \
 	src/GSM610/README src/GSM610/COPYRIGHT src/GSM610/ChangeLog \
 	src/G72x/README src/G72x/README.original src/G72x/ChangeLog \
@@ -57,28 +59,28 @@ endif
 #===============================================================================
 
 lib_LTLIBRARIES = src/libsndfile.la
-include_HEADERS = src/sndfile.hh
-nodist_include_HEADERS = src/sndfile.h
-src_libsndfile_la_CFLAGS = $(EXTERNAL_XIPH_CFLAGS)
+include_HEADERS = include/sndfile.hh
+nodist_include_HEADERS = include/sndfile.h
+src_libsndfile_la_CFLAGS = $(EXTERNAL_XIPH_CFLAGS) $(MPEG_CFLAGS)
 # MinGW requires -no-undefined if a DLL is to be built.
 src_libsndfile_la_LDFLAGS = -no-undefined -version-info $(SHARED_VERSION_INFO) $(SHLIB_VERSION_ARG)
 src_libsndfile_la_SOURCES = src/sndfile.c src/aiff.c src/au.c src/avr.c src/caf.c src/dwd.c src/flac.c src/g72x.c src/htk.c src/ircam.c \
 	src/macos.c src/mat4.c src/mat5.c src/nist.c src/paf.c src/pvf.c src/raw.c src/rx2.c src/sd2.c \
 	src/sds.c src/svx.c src/txw.c src/voc.c src/wve.c src/w64.c src/wavlike.c src/wav.c src/xi.c src/mpc2k.c src/rf64.c \
-	src/ogg_vorbis.c src/ogg_speex.c src/ogg_pcm.c src/ogg_opus.c src/ogg_vcomment.c \
-	src/common.h src/sfconfig.h src/sfendian.h src/wavlike.h src/sf_unistd.h src/ogg.h src/chanmap.h src/ogg_vcomment.h
+	src/ogg.c src/ogg.h src/ogg_vorbis.c src/ogg_speex.c src/ogg_pcm.c src/ogg_opus.c src/ogg_vcomment.c src/ogg_vcomment.h \
+	src/common.h src/sfconfig.h src/sfendian.h src/wavlike.h src/sf_unistd.h src/chanmap.h src/mp3.c
 nodist_src_libsndfile_la_SOURCES = $(nodist_include_HEADERS)
 src_libsndfile_la_LIBADD = src/GSM610/libgsm.la src/G72x/libg72x.la src/ALAC/libalac.la \
-	src/libcommon.la $(EXTERNAL_XIPH_LIBS) -lm
+	src/libcommon.la $(EXTERNAL_XIPH_LIBS) -lm $(MPEG_LIBS)
 EXTRA_src_libsndfile_la_DEPENDENCIES = $(SYMBOL_FILES)
 
 noinst_LTLIBRARIES = src/libcommon.la
-src_libcommon_la_CFLAGS = $(EXTERNAL_XIPH_CFLAGS)
+src_libcommon_la_CFLAGS = $(EXTERNAL_XIPH_CFLAGS) $(MPEG_CFLAGS)
 src_libcommon_la_SOURCES = src/common.c src/file_io.c src/command.c src/pcm.c src/ulaw.c src/alaw.c \
 	src/float32.c src/double64.c src/ima_adpcm.c src/ms_adpcm.c src/gsm610.c src/dwvw.c src/vox_adpcm.c \
 	src/interleave.c src/strings.c src/dither.c src/cart.c src/broadcast.c src/audio_detect.c \
-	src/ima_oki_adpcm.c src/ima_oki_adpcm.h src/alac.c src/chunk.c src/ogg.c src/chanmap.c \
-	src/windows.c src/id3.c src/nms_adpcm.c $(WIN_VERSION_FILE)
+	src/ima_oki_adpcm.c src/ima_oki_adpcm.h src/alac.c src/chunk.c src/chanmap.c \
+	src/windows.c src/id3.c src/id3.h src/nms_adpcm.c src/mpeg_decode.c src/mpeg_l3_encode.c src/mpeg.h $(WIN_VERSION_FILE)
 
 check_PROGRAMS = src/test_main
 src_test_main_SOURCES = src/test_main.c src/test_main.h src/test_conversions.c src/test_float.c src/test_endswap.c \
@@ -157,14 +159,14 @@ src/Symbols.static: $(SYMBOL_SCRIPT)
 AUTOHEADER=echo
 
 ########
-# doc/ #
+# docs/ #
 ########
 
 if FULL_SUITE
-dist_html_DATA = doc/index.html doc/libsndfile.jpg doc/libsndfile.css doc/print.css doc/api.html \
-	doc/command.html doc/bugs.html doc/sndfile_info.html doc/new_file_type.HOWTO \
-	doc/win32.html doc/FAQ.html doc/lists.html doc/embedded_files.html doc/octave.html \
-	doc/tutorial.html
+dist_doc_DATA = docs/index.md docs/libsndfile.jpg docs/libsndfile.css docs/print.css docs/api.md \
+	docs/command.md docs/bugs.md docs/formats.md docs/sndfile_info.md docs/new_file_type_howto.md \
+	docs/win32.md docs/FAQ.md docs/lists.md docs/embedded_files.md docs/octave.md \
+	docs/tutorial.md
 endif
 
 #############
@@ -218,7 +220,8 @@ check_PROGRAMS += tests/sfversion tests/floating_point_test tests/write_read_tes
 	tests/locale_test tests/win32_ordinal_test tests/ogg_test tests/compression_size_test \
 	tests/checksum_test tests/external_libs_test tests/rdwr_test tests/format_check_test $(CPP_TEST) \
 	tests/channel_test tests/long_read_write_test tests/stdin_test tests/stdout_test \
-	tests/dither_test tests/fix_this tests/largefile_test tests/benchmark tests/ogg_opus_test
+	tests/dither_test tests/fix_this tests/largefile_test tests/benchmark tests/ogg_opus_test \
+	tests/mp3_test
 
 BUILT_SOURCES += \
 	tests/write_read_test.c \
@@ -374,6 +377,9 @@ tests_cpp_test_LDADD = src/libsndfile.la
 tests_checksum_test_SOURCES = tests/checksum_test.c tests/utils.c tests/utils.h
 tests_checksum_test_LDADD = src/libsndfile.la
 
+tests_mp3_test_SOURCES = tests/mp3_test.c tests/utils.c tests/utils.h
+tests_mp3_test_LDADD = src/libsndfile.la
+
 # Lite remove start
 tests_dwvw_test_SOURCES = tests/dwvw_test.c tests/utils.c tests/utils.h
 tests_dwvw_test_LDADD = src/libsndfile.la
@@ -393,7 +399,7 @@ tests_scale_clip_test_LDADD = src/libsndfile.la
 # Coerce the multiple inputs -> multiple outputs problem
 # into suffix rules by "linearising" the dependency graph.
 # Yes, this sucks, but GNU make patterns aren't portable,
-# see also https://github.com/erikd/libsndfile/issues/369
+# see also https://github.com/libsndfile/libsndfile/issues/369
 
 SUFFIXES = .tpl .def
 
@@ -434,6 +440,39 @@ man/sndfile-metadata-set.1: man/sndfile-metadata-get.1
 man/sndfile-deinterleave.1: man/sndfile-interleave.1
 	-rm -f $@
 	cd $(top_srcdir)/man && $(LN_S) sndfile-interleave.1 sndfile-deinterleave.1
+
+############
+# ossfuzz/ #
+############
+
+if USE_OSSFUZZ_FLAG
+FUZZ_FLAG = $(LIB_FUZZING_ENGINE)
+FUZZ_LDADD =
+else
+if USE_OSSFUZZ_STATIC
+FUZZ_LDADD = $(LIB_FUZZING_ENGINE)
+FUZZ_FLAG =
+else
+FUZZ_LDADD = libstandaloneengine.la
+FUZZ_FLAG =
+endif
+endif
+
+if USE_OSSFUZZERS
+noinst_PROGRAMS += \
+	ossfuzz/sndfile_fuzzer
+
+noinst_LTLIBRARIES += \
+	ossfuzz/libstandaloneengine.la
+endif
+
+ossfuzz_sndfile_fuzzer_SOURCES = ossfuzz/sndfile_fuzzer.cc
+ossfuzz_sndfile_fuzzer_CXXFLAGS = $(AM_CXXFLAGS) $(FUZZ_FLAG)
+ossfuzz_sndfile_fuzzer_LDFLAGS = $(AM_LDFLAGS) -static
+ossfuzz_sndfile_fuzzer_LDADD = src/libsndfile.la $(FUZZ_LDADD)
+
+ossfuzz_libstandaloneengine_la_SOURCES = ossfuzz/standaloneengine.cc ossfuzz/testinput.h
+ossfuzz_libstandaloneengine_la_CXXFLAGS = $(AM_CXXFLAGS)
 
 #############
 # programs/ #

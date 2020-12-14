@@ -481,6 +481,11 @@ wav_read_header	(SF_PRIVATE *psf, int *blockalign, int *framesperblock)
 
 						psf_log_printf (psf, "  Count : %d\n", cue_count) ;
 
+						if (psf->cues)
+						{	free (psf->cues) ;
+							psf->cues = NULL ;
+							} ;
+
 						if ((psf->cues = psf_cues_alloc (cue_count)) == NULL)
 							return SFE_MALLOC_FAILED ;
 
@@ -1335,6 +1340,11 @@ wav_read_smpl_chunk (SF_PRIVATE *psf, uint32_t chunklen)
 	*/
 	bytesread += psf_binheader_readf (psf, "4", &sampler_data) ;
 
+	if (psf->instrument)
+	{	psf_log_printf (psf, "  Found more than one SMPL chunk, using last one.\n") ;
+		free (psf->instrument) ;
+		psf->instrument = NULL ;
+		} ;
 	if ((psf->instrument = psf_instrument_alloc ()) == NULL)
 		return SFE_MALLOC_FAILED ;
 
@@ -1486,6 +1496,11 @@ wav_read_acid_chunk (SF_PRIVATE *psf, uint32_t chunklen)
 
 	psf_binheader_readf (psf, "j", chunklen - bytesread) ;
 
+	if (psf->loop_info)
+	{	psf_log_printf (psf, "  Found existing loop info, using last one.\n") ;
+		free (psf->loop_info) ;
+		psf->loop_info = NULL ;
+		} ;
 	if ((psf->loop_info = calloc (1, sizeof (SF_LOOP_INFO))) == NULL)
 		return SFE_MALLOC_FAILED ;
 

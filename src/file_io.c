@@ -34,11 +34,21 @@
 
 #include "sfconfig.h"
 
+#if USE_WINDOWS_API
+
+/* Don't include rarely used headers, speed up build */
+#define WIN32_LEAN_AND_MEAN
+
+#include <windows.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 
 #if HAVE_UNISTD_H
 #include <unistd.h>
+#else
+#include <io.h>
 #endif
 
 #if (HAVE_DECL_S_IRGRP == 0)
@@ -596,8 +606,9 @@ psf_fsync (SF_PRIVATE *psf)
 
 /* Win32 file i/o functions implemented using native Win32 API */
 
-#include <windows.h>
-#include <io.h>
+#ifndef WINAPI_PARTITION_SYSTEM
+#define WINAPI_PARTITION_SYSTEM 0
+#endif
 
 static int psf_close_handle (HANDLE handle) ;
 static HANDLE psf_open_handle (PSF_FILE * pfile) ;
@@ -777,6 +788,21 @@ psf_open_handle (PSF_FILE * pfile)
 				return NULL ;
 		} ;
 
+#if defined (WINAPI_FAMILY_PARTITION) && !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP | WINAPI_PARTITION_SYSTEM)
+	if (!pfile->use_wchar)
+		return NULL ;
+
+	CREATEFILE2_EXTENDED_PARAMETERS cfParams = { 0 } ;
+	cfParams.dwSize = sizeof (CREATEFILE2_EXTENDED_PARAMETERS) ;
+	cfParams.dwFileAttributes = FILE_ATTRIBUTE_NORMAL ;
+
+	handle = CreateFile2 (pfile->path.wc, dwDesiredAccess, dwShareMode, dwCreationDistribution, &cfParams) ;
+
+	if (handle == INVALID_HANDLE_VALUE)
+		return NULL ;
+
+	return handle ;
+#else
 	if (pfile->use_wchar)
 		handle = CreateFileW (
 					pfile->path.wc,				/* pointer to name of the file */
@@ -802,6 +828,7 @@ psf_open_handle (PSF_FILE * pfile)
 		return NULL ;
 
 	return handle ;
+#endif
 } /* psf_open_handle */
 
 /* USE_WINDOWS_API */ static void

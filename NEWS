@@ -1,3 +1,78 @@
+Unreleased
+  * Documentation:
+    * Move site to new URL: http://libsndfile.github.io/libsndfile/
+    * Convert documentation pages from HTML to Markdown
+    * Use GitHub's Jekyll static site generator to generate static HTML pages
+      for site
+  * Change CMake's project name from sndfile to libsndfile as it should be.
+  * Change behaviour of ENABLE_STATIC_RUNTIME option. In short:
+    * You can use ENABLE_STATIC_RUNTIME for CMake >= 3.15 without error.
+    * You can use your our method to set MSVC runtime library flags if none of
+      ENABLE_STATIC_RUNTIME and CMAKE_MSVC_RUNTIME_LIBRARY were set.
+    Advanced information:
+    * If this option is defined (set to ON or OFF), set CMP0091 policy to OLD
+      (we handle MSVC runtime library flags using compiler flags), set
+      corresponding compiler flags for user.
+    * NEW: If this option is not defined, set CMP0091 policy to OLD (we handle
+      MSVC runtime library flags using compiler flags), don't touch compiler
+      options, allow user to set it manually.
+    * NEW: If new CMake option CMAKE_MSVC_RUNTIME_LIBRARY is set, change
+      CMP0091 policy to NEW (we handle MSVC runtime library flags using that
+      option), don't touch compiler flags.
+    * NEW: If both ENABLE_STATIC_RUNTIME and CMAKE_MSVC_RUNTIME_LIBRARY are set,
+      terminate configuration with fatal error.
+    * For MinGW toolchain this option is experimental. If you enabled it and
+      then disabled again, you need to clear CMake cache (delete
+      CMakeCache.txt).
+
+Version 1.0.30 (2020-09-18)
+
+  * Fix critical CMake bug with broken ABI of shared libsndfile library.
+  * CMake build system considered to be stable.
+  * Move sndfile.h.in from src/ to include/ directory. To avoid problems,
+    delete old generated sndfile.h from $(top_builddir)/src.
+  * Huge documentation update.
+  * Fix opus test failures on BE platforms, thanks to
+    Arthur Taylor <art@ified.ca>.
+  * Fix bug when sf_open_fd() function sometimes leaves filehandle open, even
+    if `close_desc` parameter is TRUE, thanks to @umläute.
+  * Fix infinite loops on some pathological SD2 files, thanks to
+    Jeremy Friesner <jaf@meyersound.com>.
+  * Switch to GitHub Actions for continuous integration.
+  * Add OSS-Fuzz tests to GitHub Actions workflow, thanks to
+    Max Dymond <cmeister2@gmail.com>.
+  * Fix memory leak in wavlike_read_bext_chunk() function, credit to OSS-Fuzz.
+  * Fix undefined behavior in avr-read_header() function, credit to OSS-Fuzz.
+  * Add INSTALL_PKGCONFIG_MODULE CMake option to control sndfile.pc file
+    installation, see README.md for details.
+  * Add INSTALL_MANPAGES CMake option, see README.md for details.
+  * Fix ENABLE_COMPATIBLE_LIBSNDFILE_NAME CMake option, now it works on MinGW
+    platform too.
+  * Fix ENABLE_CPACK CMake option, see README.md for details.
+  * Fix ENABLE_STATIC_RUNTIME and CMAKE_MSVC_RUNTIME_LIBRARY behavior, see
+    README.md for details.
+  * Fix CMake man pages installation bug when sndfile-deinterleave.1 and
+    sndfile-metadata-set.1 were not installed.
+  * Fix sndfile-regtest paths handling on Windows platform, thanks to
+    Gisle Vanem <gvanem@yahoo.no>.
+
+Version 1.0.29 (2020-08-15)
+  * Add support for Opus files.
+  * Autotool build system improvements.
+  * CMake build system improvements.
+  * Fixes for: CVE-2017-12562, CVE-2017-17456, CVE-2017-17457, CVE-2018-19661,
+    CVE-2018-19662, CVE-2018-19758 and CVE-2019-3832.
+  * Add BWF v2 loudness parameters.
+  * Wave64: Permit and skip arbitrary chunks prior to the data chunk.
+  * Fix ASAN crash in wavlike_ima_seek().
+  * Fix IMA-ADPCM encoding for AIFF files.
+  * sndfile-convert: Handle gsm, vox and opus extensions the same way.
+  * Add SFC_SET_OGG_PAGE_LATENCY_MS command to get Ogg page latency for Ogg Opus
+    files.
+  * Fix parsing of some SD2 files.
+  * Documentation updates.
+  * Minor bug fixes and improvements.
+
 Version 1.0.28 (2017-04-02)
   * Fix buffer overruns in FLAC and ID3 handling code.
   * Move to variable length header storage.

@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2001-2017 Erik de Castro Lopo <erikd@mega-nerd.com>
+** Copyright (C) 2001-2020 Erik de Castro Lopo <erikd@mega-nerd.com>
 ** Copyright (C) 2004 Paavo Jumppanen
 **
 ** This program is free software; you can redistribute it and/or modify
@@ -516,6 +516,7 @@ parse_str_rsrc (SF_PRIVATE *psf, SD2_RSRC * rsrc)
 	str_offset = rsrc->string_offset ;
 	psf_log_printf (psf, "  Offset    RsrcId    dlen    slen    Value\n") ;
 
+
 	for (k = 0 ; data_offset + data_len < rsrc->rsrc_len ; k++)
 	{	int slen ;
 
@@ -523,7 +524,13 @@ parse_str_rsrc (SF_PRIVATE *psf, SD2_RSRC * rsrc)
 		read_rsrc_str (rsrc, str_offset + 1, name, SF_MIN (SIGNED_SIZEOF (name), slen + 1)) ;
 		str_offset += slen + 1 ;
 
-		rsrc_id = read_rsrc_short (rsrc, rsrc->item_offset + k * 12) ;
+		// work-around for GitHub issue #340
+		int id_offset = rsrc->item_offset + k * 12 ;
+		if (id_offset < 0 || id_offset + 1 >= rsrc->rsrc_len)
+		{	psf_log_printf (psf, "Exiting parser on id_offset of %d.\n", id_offset) ;
+			break ;
+			}
+		rsrc_id = read_rsrc_short (rsrc, id_offset) ;
 
 		data_offset = rsrc->data_offset + read_rsrc_int (rsrc, rsrc->item_offset + k * 12 + 4) ;
 		if (data_offset < 0 || data_offset > rsrc->rsrc_len)
@@ -541,6 +548,11 @@ parse_str_rsrc (SF_PRIVATE *psf, SD2_RSRC * rsrc)
 		read_rsrc_str (rsrc, data_offset + 5, value, SF_MIN (SIGNED_SIZEOF (value), slen + 1)) ;
 
 		psf_log_printf (psf, "  0x%04x     %4d     %4d     %3d    '%s'\n", data_offset, rsrc_id, data_len, slen, value) ;
+
+		if (strstr (value, "Photoshop"))
+		{	psf_log_printf (psf, "Exiting parser on Photoshop data.\n", data_offset) ;
+			break ;
+			} ;
 
 		if (rsrc_id == 1000 && rsrc->sample_size == 0)
 			rsrc->sample_size = strtol (value, NULL, 10) ;

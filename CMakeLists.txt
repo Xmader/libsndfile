@@ -1,10 +1,21 @@
-cmake_minimum_required (VERSION 3.1.3)
+cmake_minimum_required (VERSION 3.1..3.18)
 
+# MSVC runtime library flags are selected by an abstraction, CMake >= 3.15
+# This policy still need to be set even with cmake_minimum_required() command above.
 if (POLICY CMP0091)
-	cmake_policy(SET CMP0091 NEW)
+	if ((DEFINED ENABLE_STATIC_RUNTIME) AND (DEFINED CMAKE_MSVC_RUNTIME_LIBRARY))
+		message (FATAL_ERROR "Both ENABLE_STATIC_RUNTIME and CMAKE_MSVC_RUNTIME_LIBRARY are set.")
+		return ()
+	endif ()
+
+	if (DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+		cmake_policy (SET CMP0091 NEW)
+	else ()
+		cmake_policy (SET CMP0091 OLD)
+	endif ()
 endif ()
 
-project(sndfile VERSION 1.0.29)
+project(libsndfile VERSION 1.0.30)
 
 #
 # Variables
@@ -14,22 +25,17 @@ set (CMAKE_C_STANDARD 99)
 set (CMAKE_C_STANDARD_REQUIRED TRUE)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-set (PACKAGE_NAME lib${PROJECT_NAME})
+set (PACKAGE_NAME ${PROJECT_NAME})
 set (CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set (CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set (CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
-set (CPACK_PACKAGE_VERSION_STAGE "pre2")
+set (CPACK_PACKAGE_VERSION_STAGE "")
 set (CPACK_PACKAGE_VERSION_FULL "${PROJECT_VERSION}${CPACK_PACKAGE_VERSION_STAGE}")
 
 #
 # System-wide includes
 #
 
-# Set proper default documentation install directory based on canonical
-# package name, not CMake project name. This option can still be overridden.
-if(NOT CMAKE_INSTALL_DOCDIR)
-	set(CMAKE_INSTALL_DOCDIR "${CMAKE_INSTALL_DATAROOTDIR}/doc/libsndfile")
-endif()
 include (GNUInstallDirs)
 include (FeatureSummary)
 include (CMakeDependentOption)
@@ -49,12 +55,18 @@ option (BUILD_EXAMPLES "Build examples" ON)
 option (ENABLE_CPACK "Enable CPack support" ON)
 option (ENABLE_EXPERIMENTAL "Enable experimental code" OFF)
 option (ENABLE_BOW_DOCS "Enable black-on-white html docs" OFF)
-if (MSVC OR MINGW)
+if (MSVC AND (DEFINED ENABLE_STATIC_RUNTIME))
+	option (ENABLE_STATIC_RUNTIME "Enable static runtime" ${ENABLE_STATIC_RUNTIME})
+elseif (MINGW)
 	option (ENABLE_STATIC_RUNTIME "Enable static runtime" OFF)
 endif ()
 option (ENABLE_PACKAGE_CONFIG "Generate and install package config file" ON)
+option (INSTALL_PKGCONFIG_MODULE "Generate and install pkg-config module" ON)
 
 list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+if (CMAKE_VERSION VERSION_LESS 3.14)
+	list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/sqlite")
+endif ()
 
 #
 # Setup definitions
@@ -65,12 +77,14 @@ include(SndFileChecks)
 
 cmake_dependent_option (BUILD_REGTEST "Build regtest" ON "SQLITE3_FOUND" OFF)
 cmake_dependent_option (ENABLE_EXTERNAL_LIBS "Enable FLAC, Vorbis, and Opus codecs" ON "Vorbis_FOUND;FLAC_FOUND;OPUS_FOUND" OFF)
+cmake_dependent_option (ENABLE_MPEG "Enable MPEG codecs" ON "LAME_FOUND;MPG123_FOUND" OFF)
 cmake_dependent_option (ENABLE_CPU_CLIP "Enable tricky cpu specific clipper" ON "CPU_CLIPS_POSITIVE;CPU_CLIPS_NEGATIVE" OFF)
 if (NOT ENABLE_CPU_CLIP)
 	set (CPU_CLIPS_POSITIVE FALSE)
 	set (CPU_CLIPS_NEGATIVE FALSE)
 endif ()
-cmake_dependent_option (ENABLE_COMPATIBLE_LIBSNDFILE_NAME "Set DLL name to libsndfile-1.dll (canonical name), sndfile.dll otherwise" OFF "WIN32;NOT MINGW;BUILD_SHARED_LIBS" OFF)
+cmake_dependent_option (ENABLE_COMPATIBLE_LIBSNDFILE_NAME "Set DLL name to libsndfile-1.dll (canonical name), sndfile.dll otherwise" OFF "WIN32;BUILD_SHARED_LIBS" OFF)
+cmake_dependent_option (INSTALL_MANPAGES "Install man pages for programs" ON "BUILD_PROGRAMS" OFF)
 
 set (HAVE_EXTERNAL_XIPH_LIBS ${ENABLE_EXTERNAL_LIBS})
 set (HAVE_SQLITE3 ${BUILD_REGTEST})
@@ -78,11 +92,12 @@ set (HAVE_ALSA_ASOUNDLIB_H ${ALSA_FOUND})
 set (HAVE_SNDIO_H ${SNDIO_FOUND})
 
 set (ENABLE_EXPERIMENTAL_CODE ${ENABLE_EXPERIMENTAL})
+set (HAVE_MPEG_LIBS ${ENABLE_MPEG})
 set (HAVE_SPEEX ${ENABLE_EXPERIMENTAL})
-set (HAVE_OPUS ${ENABLE_EXPERIMENTAL})
 
 add_feature_info (BUILD_SHARED_LIBS BUILD_SHARED_LIBS "build shared libraries")
 add_feature_info (ENABLE_EXTERNAL_LIBS ENABLE_EXTERNAL_LIBS "enable FLAC, Vorbis, and Opus codecs")
+add_feature_info (ENABLE_MPEG ENABLE_MPEG "enable MPEG audio (including mp3) codecs")
 add_feature_info (ENABLE_EXPERIMENTAL ENABLE_EXPERIMENTAL "enable experimental code")
 add_feature_info (BUILD_TESTING BUILD_TESTING "build tests")
 add_feature_info (BUILD_REGTEST BUILD_REGTEST "build regtest")
@@ -90,11 +105,13 @@ add_feature_info (ENABLE_CPACK ENABLE_CPACK "enable CPack support")
 add_feature_info (ENABLE_CPU_CLIP ENABLE_CPU_CLIP "Enable tricky cpu specific clipper")
 add_feature_info (ENABLE_BOW_DOCS ENABLE_BOW_DOCS "enable black-on-white html docs")
 add_feature_info (ENABLE_PACKAGE_CONFIG ENABLE_PACKAGE_CONFIG "generate and install package config file")
-if (WIN32 AND (NOT MINGW) AND BUILD_SHARED_LIBS)
+add_feature_info (INSTALL_PKGCONFIG_MODULE INSTALL_PKGCONFIG_MODULE "generate and install pkg-config module")
+add_feature_info (INSTALL_MANPAGES INSTALL_MANPAGES "install man pages for programs")
+if (WIN32 AND BUILD_SHARED_LIBS)
 	add_feature_info (ENABLE_COMPATIBLE_LIBSNDFILE_NAME ENABLE_COMPATIBLE_LIBSNDFILE_NAME "Set DLL name to libsndfile-1.dll (canonical name), sndfile.dll otherwise")
 endif ()
 
-if (MSVC OR MINGW)
+if ((MSVC AND (DEFINED ENABLE_STATIC_RUNTIME)) OR MINGW)
 	add_feature_info (ENABLE_STATIC_RUNTIME ENABLE_STATIC_RUNTIME "Enable static runtime")
 endif ()
 
@@ -115,6 +132,18 @@ set_package_properties (FLAC PROPERTIES
 	URL "www.xiph.org/flac/"
 	DESCRIPTION "Free Lossless Audio Codec Library"
 	PURPOSE "Enables FLAC support"
+	)
+set_package_properties (LAME PROPERTIES
+	TYPE OPTIONAL
+	URL "https://lame.sourceforge.io/"
+	DESCRIPTION "High quality MPEG Audio Layer III (MP3) encoder"
+	PURPOSE "Enables MPEG layer III (MP3) writing support"
+	)
+set_package_properties (MPG123 PROPERTIES
+	TYPE OPTIONAL
+	URL "https://www.mpg123.de/"
+	DESCRIPTION "MPEG Audio Layer I/II/III decoder"
+	PURPOSE "Enables MPEG Audio reading support"
 	)
 set_package_properties(Opus PROPERTIES
 	TYPE RECOMMENDED
@@ -150,20 +179,25 @@ feature_summary (WHAT ALL)
 
 configure_file (src/config.h.cmake src/config.h)
 
-configure_file (src/sndfile.h.in src/sndfile.h)
+configure_file (include/sndfile.h.in include/sndfile.h)
 
-set (prefix ${CMAKE_INSTALL_PREFIX})
-set (exec_prefix "\$\{prefix\}")
-set (libdir "\$\{prefix\}/${CMAKE_INSTALL_LIBDIR}")
-set (includedir "\$\{prefix\}/${CMAKE_INSTALL_INCLUDEDIR}")
-set (VERSION ${PROJECT_VERSION})
-if (ENABLE_EXTERNAL_LIBS)
-	set (EXTERNAL_XIPH_REQUIRE "flac ogg vorbis vorbisenc opus")
-	if (ENABLE_EXPERIMENTAL)
-		set (EXTERNAL_XIPH_REQUIRE "${EXTERNAL_XIPH_REQUIRE} speex")
+if (INSTALL_PKGCONFIG_MODULE)
+
+	set (prefix ${CMAKE_INSTALL_PREFIX})
+	set (exec_prefix "\$\{prefix\}")
+	set (libdir "\$\{prefix\}/${CMAKE_INSTALL_LIBDIR}")
+	set (includedir "\$\{prefix\}/${CMAKE_INSTALL_INCLUDEDIR}")
+	set (VERSION ${PROJECT_VERSION})
+	if (ENABLE_EXTERNAL_LIBS)
+		set (EXTERNAL_XIPH_REQUIRE "flac ogg vorbis vorbisenc opus")
+		if (ENABLE_EXPERIMENTAL)
+			set (EXTERNAL_XIPH_REQUIRE "${EXTERNAL_XIPH_REQUIRE} speex")
+		endif ()
 	endif ()
+
+	configure_file (sndfile.pc.in sndfile.pc @ONLY)
+
 endif ()
-configure_file (sndfile.pc.in sndfile.pc @ONLY)
 
 #
 # libsndfile
@@ -171,8 +205,8 @@ configure_file (sndfile.pc.in sndfile.pc @ONLY)
 
 # Public libsndfile headers
 set (sndfile_HDRS
-	src/sndfile.hh
-	${CMAKE_CURRENT_BINARY_DIR}/src/sndfile.h
+	include/sndfile.hh
+	${CMAKE_CURRENT_BINARY_DIR}/include/sndfile.h
 	)
 
 #
@@ -211,9 +245,9 @@ add_library (sndfile
 	src/ogg.c
 	src/chanmap.h
 	src/chanmap.c
+	src/id3.h
 	src/id3.c
 	$<$<BOOL:${WIN32}>:src/windows.c>
-	$<$<AND:$<BOOL:${WIN32}>,$<BOOL:${WIN32}>>:src/version-metadata.rc>
 	src/sndfile.c
 	src/aiff.c
 	src/au.c
@@ -249,8 +283,12 @@ add_library (sndfile
 	src/ogg_speex.c
 	src/ogg_pcm.c
 	src/ogg_opus.c
+	src/ogg_vcomment.h
 	src/ogg_vcomment.c
 	src/nms_adpcm.c
+	src/mp3.c
+	src/mpeg_decode.c
+	src/mpeg_l3_encode.c
 	src/GSM610/config.h
 	src/GSM610/gsm.h
 	src/GSM610/gsm610_priv.h
@@ -296,11 +334,16 @@ add_library (sndfile
 	${CMAKE_CURRENT_BINARY_DIR}/src/config.h
 	)
 
-target_include_directories(sndfile
+add_library (SndFile::sndfile ALIAS sndfile)
+
+target_include_directories (sndfile
 	PUBLIC
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/src>
+		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+		$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/include>
 		$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+	PRIVATE
+		src
+		$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/src>
 	)
 target_link_libraries (sndfile
 	PRIVATE
@@ -309,15 +352,23 @@ target_link_libraries (sndfile
 		$<$<BOOL:${HAVE_EXTERNAL_XIPH_LIBS}>:FLAC::FLAC>
 		$<$<AND:$<BOOL:${ENABLE_EXPERIMENTAL}>,$<BOOL:${HAVE_EXTERNAL_XIPH_LIBS}>,$<BOOL:${HAVE_SPEEX}>>:Speex::Speex>
 		$<$<BOOL:${HAVE_EXTERNAL_XIPH_LIBS}>:Opus::opus>
+		$<$<BOOL:${HAVE_MPEG_LIBS}>:MPG123::libmpg123>
+		$<$<BOOL:${HAVE_MPEG_LIBS}>:Lame::Lame>
 	)
 set_target_properties (sndfile PROPERTIES
 	PUBLIC_HEADER "${sndfile_HDRS}"
 	)
 
 if (ENABLE_COMPATIBLE_LIBSNDFILE_NAME)
-	set_target_properties (sndfile PROPERTIES
-		RUNTIME_OUTPUT_NAME "libsndfile-1"
-		)
+	if (MINGW OR CYGWIN)
+		set_target_properties (sndfile PROPERTIES
+			RUNTIME_OUTPUT_NAME "sndfile-1"
+			)
+	else ()
+		set_target_properties (sndfile PROPERTIES
+			RUNTIME_OUTPUT_NAME "libsndfile-1"
+			)
+	endif ()
 endif ()
 
 if (BUILD_SHARED_LIBS)
@@ -331,6 +382,7 @@ if (BUILD_SHARED_LIBS)
 		set (PACKAGE_VERSION ${CPACK_PACKAGE_VERSION})
 
 		configure_file (src/version-metadata.rc.in src/version-metadata.rc @ONLY)
+		target_sources (sndfile PRIVATE ${PROJECT_BINARY_DIR}/src/version-metadata.rc)
 	endif ()
 
 	set_target_properties (sndfile PROPERTIES
@@ -357,7 +409,7 @@ if (BUILD_SHARED_LIBS)
 	if (DEFINED SYMBOL_OS)
 		add_custom_command (
 			OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}
-			COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/src/create_symbols_file.py ${SYMBOL_OS} ${PROJECT_VERSION_MAJOR} > ${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}
+			COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/src/create_symbols_file.py ${SYMBOL_OS} ${PROJECT_VERSION} > ${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}
 			COMMENT "Generating ${SYMBOL_FILENAME}..."
 			)
 
@@ -369,19 +421,31 @@ if (BUILD_SHARED_LIBS)
 				)
 		elseif (SYMBOL_OS MATCHES "darwin")
 			add_dependencies (sndfile GENFILES)
-			set_property (TARGET sndfile APPEND_STRING PROPERTY
-				LINK_FLAGS " -Wl,-exported_symbols_list -Wl,${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}"
-				)
+			if (CMAKE_VERSION VERSION_LESS 3.13)
+				set_property (TARGET sndfile APPEND_STRING PROPERTY
+					LINK_FLAGS "-Wl,-exported_symbols_list -Wl,${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}"
+					)
+			else ()
+				target_link_options (sndfile PRIVATE "LINKER:-exported_symbols_list,${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}")
+			endif()
 		elseif (SYMBOL_OS MATCHES "os")
 			add_dependencies (sndfile GENFILES)
-			set_property (TARGET sndfile APPEND_STRING PROPERTY
-				LINK_FLAGS " -Wl,-export-symbols ${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}"
-				)
+			if (CMAKE_VERSION VERSION_LESS 3.13)
+				set_property (TARGET sndfile APPEND_STRING PROPERTY
+					LINK_FLAGS "-Wl,-export-symbols ${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}"
+					)
+			else ()
+				target_link_options (sndfile PRIVATE "LINKER:-export-symbols ${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}")
+			endif()
 		elseif (UNIX)
 			add_dependencies (sndfile GENFILES)
-			set_property (TARGET sndfile APPEND_STRING PROPERTY
-				LINK_FLAGS " -Wl,--version-script,${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}"
-				)
+			if (CMAKE_VERSION VERSION_LESS 3.13)
+				set_property (TARGET sndfile APPEND_STRING PROPERTY
+					LINK_FLAGS "-Wl,--version-script,${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}"
+					)
+			else ()
+				target_link_options (sndfile PRIVATE "LINKER:--version-script,${CMAKE_CURRENT_BINARY_DIR}/src/${SYMBOL_FILENAME}")
+			endif()
 		endif()
 	endif()
 
@@ -414,6 +478,11 @@ if (BUILD_PROGRAMS)
 		$<$<NOT:$<BOOL:${BEOS}>>:programs/sndfile-play.c>
 		$<$<BOOL:${BEOS}>:programs/sndfile-play-beos.cpp>
 		)
+	target_include_directories (sndfile-play
+		PRIVATE
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+		)
 	target_link_libraries (sndfile-play PRIVATE $<$<BOOL:${LIBM_REQUIRED}>:m>)
 	target_link_libraries (sndfile-play PRIVATE sndfile)
 	if (WIN32)
@@ -443,6 +512,12 @@ if (BUILD_PROGRAMS)
 		programs/common.c
 		programs/common.h
 		)
+	target_include_directories (sndfile-cmp
+		PUBLIC
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+			${CMAKE_CURRENT_BINARY_DIR}/tests
+		)
 	target_link_libraries (sndfile-cmp PRIVATE sndfile $<$<BOOL:${LIBM_REQUIRED}>:m>)
 
 # sndfile-metadata-set
@@ -452,6 +527,12 @@ if (BUILD_PROGRAMS)
 		programs/common.c
 		programs/common.h
 		)
+	target_include_directories (sndfile-metadata-set
+		PUBLIC
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+			${CMAKE_CURRENT_BINARY_DIR}/tests
+		)
 	target_link_libraries (sndfile-metadata-set PRIVATE sndfile $<$<BOOL:${LIBM_REQUIRED}>:m>)
 
 # sndfile-metadata-get
@@ -460,6 +541,12 @@ if (BUILD_PROGRAMS)
 		programs/sndfile-metadata-get.c
 		programs/common.c
 		programs/common.h
+		)
+	target_include_directories (sndfile-metadata-get
+		PUBLIC
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+			${CMAKE_CURRENT_BINARY_DIR}/tests
 		)
 	target_link_libraries (sndfile-metadata-get PRIVATE sndfile $<$<BOOL:${LIBM_REQUIRED}>:m>)
 
@@ -496,6 +583,12 @@ if (BUILD_PROGRAMS)
 		programs/sndfile-salvage.c
 		programs/common.c
 		programs/common.h
+		)
+	target_include_directories (sndfile-salvage
+		PUBLIC
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+			${CMAKE_CURRENT_BINARY_DIR}/tests
 		)
 	target_link_libraries (sndfile-salvage PRIVATE sndfile $<$<BOOL:${LIBM_REQUIRED}>:m>)
 
@@ -589,10 +682,16 @@ if (BUILD_REGTEST)
 		regtest/database.c
 		regtest/checksum.c
 		)
+	target_include_directories (sndfile-regtest
+		PUBLIC
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+			${CMAKE_CURRENT_BINARY_DIR}/tests
+		)
 	target_link_libraries(sndfile-regtest
 		PRIVATE
 			sndfile
-			SQLite3::SQLite3
+			SQLite::SQLite3
 			$<$<BOOL:${LIBM_REQUIRED}>:m>
 		)
 
@@ -610,8 +709,11 @@ if (ENABLE_PACKAGE_CONFIG)
 	 	set (CMAKE_INSTALL_PACKAGEDIR ${CMAKE_INSTALL_LIBDIR}/cmake/SndFile)
 	 endif()
 
+	 install (TARGETS ${SNDFILE_PROGRAM_TARGETS}
+		RUNTIME DESTINATION			${CMAKE_INSTALL_BINDIR}
+ 	)
 
-	install (TARGETS sndfile ${SNDFILE_PROGRAM_TARGETS}
+	install (TARGETS sndfile
 		EXPORT SndFileTargets
 		RUNTIME DESTINATION			${CMAKE_INSTALL_BINDIR}
 		ARCHIVE DESTINATION			${CMAKE_INSTALL_LIBDIR}
@@ -655,20 +757,21 @@ else ()
 
 endif ()
 
-if (UNIX)
+if (INSTALL_MANPAGES)
+
 	set (man_MANS
 		man/sndfile-info.1
 		man/sndfile-play.1
 		man/sndfile-convert.1
 		man/sndfile-cmp.1
 		man/sndfile-metadata-get.1
-		#man/sndfile-metadata-set.1
 		man/sndfile-concat.1
 		man/sndfile-interleave.1
-		#man/sndfile-deinterleave.1
 		man/sndfile-salvage.1
 		)
 	install (FILES ${man_MANS} DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+	install (FILES man/sndfile-metadata-get.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1 RENAME sndfile-metadata-set.1)
+	install (FILES man/sndfile-interleave.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1 RENAME sndfile-deinterleave.1)
 endif ()
 
 if (ENABLE_BOW_DOCS)
@@ -678,27 +781,29 @@ else ()
 	set (HTML_BGCOLOUR "black")
 	set (HTML_FGCOLOUR "white")
 endif ()
-configure_file (doc/libsndfile.css.in doc/libsndfile.css)
-set (html_DATA
-	doc/index.html
-	doc/libsndfile.jpg
-	"${CMAKE_CURRENT_BINARY_DIR}/doc/libsndfile.css"
-	doc/print.css
-	doc/api.html
-	doc/command.html
-	doc/bugs.html
-	doc/sndfile_info.html
-	doc/new_file_type.HOWTO
-	doc/win32.html
-	doc/FAQ.html
-	doc/lists.html
-	doc/embedded_files.html
-	doc/octave.html
-	doc/tutorial.html
+set (dist_doc_DATA
+	docs/index.md
+	docs/libsndfile.jpg
+	docs/libsndfile.css
+	docs/print.css
+	docs/api.md
+	docs/command.md
+	docs/bugs.md
+	docs/formats.md
+	docs/sndfile_info.md
+	docs/new_file_type_howto.md
+	docs/win32.md
+	docs/FAQ.md
+	docs/lists.md
+	docs/embedded_files.md
+	docs/octave.md
+	docs/tutorial.md
 	)
-install (FILES ${html_DATA} DESTINATION ${CMAKE_INSTALL_DOCDIR})
+install (FILES ${dist_doc_DATA} DESTINATION ${CMAKE_INSTALL_DOCDIR})
 
-install (FILES ${CMAKE_CURRENT_BINARY_DIR}/sndfile.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+if (INSTALL_PKGCONFIG_MODULE)
+	install (FILES ${CMAKE_CURRENT_BINARY_DIR}/sndfile.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+endif ()
 
 #
 # Testing
@@ -724,8 +829,13 @@ if (BUILD_TESTING)
 
 	# utils static library
 	add_library(test_utils STATIC tests/utils.c)
+	target_include_directories (test_utils
+		PUBLIC
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+			${CMAKE_CURRENT_BINARY_DIR}/tests
+		)
 	target_link_libraries(test_utils PRIVATE sndfile)
-	target_include_directories(test_utils PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/tests")
 
 	### test_main
 
@@ -745,6 +855,12 @@ if (BUILD_TESTING)
 		src/test_binheader_writef.c
 		src/test_nms_adpcm.c
 		)
+	target_include_directories (test_main
+		PUBLIC
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+			${CMAKE_CURRENT_BINARY_DIR}/tests
+		)
 	target_link_libraries (test_main PRIVATE sndfile)
 	if (MSVC)
 		target_compile_definitions (test_main PRIVATE _USE_MATH_DEFINES)
@@ -754,6 +870,11 @@ if (BUILD_TESTING)
 	### sfversion_test
 
 	add_executable (sfversion tests/sfversion.c)
+	target_include_directories (sfversion
+		PRIVATE
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+		)
 	target_link_libraries (sfversion sndfile)
 	add_test (sfversion sfversion)
 	set_tests_properties (sfversion PROPERTIES
@@ -1065,6 +1186,14 @@ if (BUILD_TESTING)
 			$<$<BOOL:${LIBM_REQUIRED}>:m>
 		)
 
+	add_executable (mp3_test tests/mp3_test.c)
+	target_link_libraries (mp3_test
+		PRIVATE
+			sndfile
+			test_utils
+			$<$<BOOL:${LIBM_REQUIRED}>:m>
+		)
+
 	add_executable (stdin_test tests/stdin_test.c)
 	target_link_libraries (stdin_test
 		PRIVATE
@@ -1110,6 +1239,11 @@ if (BUILD_TESTING)
 	### g72x_test
 
 	add_executable (g72x_test src/G72x/g72x_test.c)
+	target_include_directories (g72x_test
+		PRIVATE
+			src
+			${CMAKE_CURRENT_BINARY_DIR}/src
+		)
 	target_link_libraries (g72x_test
 		PRIVATE
 			sndfile
@@ -1291,6 +1425,10 @@ if (BUILD_TESTING)
 	add_test (lossy_comp_test_ogg_opus lossy_comp_test ogg_opus)
 	add_test (string_test_opus string_test opus)
 
+	### mp3-tests ###
+	add_test (mp3_test mp3_test)
+	add_test (compression_size_test_mpeg compression_size_test mpeg)
+
 	### io-tests
 	add_test (stdio_test stdio_test)
 	add_test (pipe_test pipe_test)
@@ -1343,4 +1481,8 @@ if (BUILD_TESTING)
 
 	set_target_properties(${SNDFILE_TEST_TARGETS} PROPERTIES FOLDER Tests)
 
+endif ()
+
+if (ENABLE_CPACK)
+	include (CPack)
 endif ()

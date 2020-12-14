@@ -54,6 +54,14 @@ else ()
 	set (HAVE_EXTERNAL_XIPH_LIBS 0)
 endif ()
 
+find_package (Lame)
+find_package (Mpg123 1.25.10)
+if (LAME_FOUND AND MPG123_FOUND)
+	set (HAVE_MPEG_LIBS 1)
+else ()
+	set (HAVE_MPEG_LIBS 0)
+endif()
+
 find_package (Speex)
 find_package (SQLite3)
 
@@ -213,45 +221,54 @@ if (MSVC)
 	add_definitions (-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE)
 endif (MSVC)
 
-if (ENABLE_STATIC_RUNTIME)
+if (DEFINED ENABLE_STATIC_RUNTIME)
 	if (MSVC)
-		foreach (flag_var
-			CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-			CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO
-			CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-			CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
-			)
-			if (${flag_var} MATCHES "/MD")
-				string (REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+		if (ENABLE_STATIC_RUNTIME)
+			foreach (flag_var
+				CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+				CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO
+				CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+				CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
+				)
+				if (${flag_var} MATCHES "/MD")
+					string (REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+				endif ()
+			endforeach (flag_var)
+		else ()
+			foreach (flag_var
+				CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+				CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO
+				CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+				CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
+				)
+				if (${flag_var} MATCHES "/MT")
+					string (REGEX REPLACE "/MT" "/MD" ${flag_var} "${${flag_var}}")
+				endif (${flag_var} MATCHES "/MT")
+			endforeach (flag_var)
+		endif ( )
+	elseif (MINGW)
+		if (ENABLE_STATIC_RUNTIME)
+			if (CMAKE_C_COMPILER_ID STREQUAL GNU)
+				set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static-libgcc")
+				set (CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "${CMAKE_SHARED_LIBRARY_LINK_C_FLAGS} -static-libgcc -s")
 			endif ()
-		endforeach (flag_var)
-	endif (MSVC)
-	if (MINGW)
-		set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static-libgcc")
-		set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++")
-		set (CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "${CMAKE_SHARED_LIBRARY_LINK_C_FLAGS} -static-libgcc -s")
-		set (CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS} -static-libgcc -static-libstdc++ -s")
-	endif (MINGW)
-elseif (NOT ENABLE_STATIC_RUNTIME)
-	if (MSVC)
-		foreach (flag_var
-			CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-			CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO
-			CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-			CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
-			)
-			if (${flag_var} MATCHES "/MT")
-				string (REGEX REPLACE "/MT" "/MD" ${flag_var} "${${flag_var}}")
-			endif (${flag_var} MATCHES "/MT")
-		endforeach (flag_var)
+			if (CMAKE_CXX_COMPILER_ID STREQUAL GNU)
+				set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++")
+				set (CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS} -static-libgcc -static-libstdc++ -s")
+			endif ()
+			if (CMAKE_C_COMPILER_ID STREQUAL Clang)
+				set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -static")
+				set (CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "${CMAKE_SHARED_LIBRARY_LINK_C_FLAGS} -static")
+			endif ()
+			if (CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+				set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static")
+				set (CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "${CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS} -static")
+			endif ()
+		endif ()
+	else ()
+		message (AUTHOR_WARNING "ENABLE_STATIC_RUNTIME option is for MSVC or MinGW only.")
 	endif ()
-	if (MINGW)
-		set (CMAKE_C_FLAGS "")
-		set (CMAKE_CXX_FLAGS "")
-		set (CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
-		set (CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "")
-	endif ()
-endif ( )
+endif ()
 
 if (BUILD_SHARED_LIBS)
 	find_package (PythonInterp REQUIRED)

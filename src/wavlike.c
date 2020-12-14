@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 1999-2017 Erik de Castro Lopo <erikd@mega-nerd.com>
+** Copyright (C) 1999-2020 Erik de Castro Lopo <erikd@mega-nerd.com>
 ** Copyright (C) 2004-2005 David Viens <davidv@plogue.com>
 **
 ** This program is free software; you can redistribute it and/or modify
@@ -740,10 +740,17 @@ wavlike_read_bext_chunk (SF_PRIVATE *psf, uint32_t chunksize)
 
 	psf_log_printf (psf, "bext : %u\n", chunksize) ;
 
-	if ((psf->broadcast_16k = broadcast_var_alloc ()) == NULL)
-	{	psf->error = SFE_MALLOC_FAILED ;
-		return psf->error ;
-		} ;
+	if (!psf->broadcast_16k)
+	{	psf->broadcast_16k = broadcast_var_alloc () ;
+		if (!psf->broadcast_16k)
+		{	psf->error = SFE_MALLOC_FAILED ;
+			return psf->error ;
+			}
+		}
+	else
+	{	psf_log_printf (psf, "bext : found more than one bext chunk, using last one.\n") ;
+		memset (psf->broadcast_16k, 0, sizeof (SF_BROADCAST_INFO_16K)) ;
+		}
 
 	b = psf->broadcast_16k ;
 
@@ -830,6 +837,12 @@ wavlike_read_cart_chunk (SF_PRIVATE *psf, uint32_t chunksize)
 		} ;
 
 	psf_log_printf (psf, "cart : %u\n", chunksize) ;
+
+	if (psf->cart_16k)
+	{	psf_log_printf (psf, "  Found more than one cart chunk, using last one.\n") ;
+		free (psf->cart_16k) ;
+		psf->cart_16k = NULL ;
+		} ;
 
 	if ((psf->cart_16k = cart_var_alloc ()) == NULL)
 	{	psf->error = SFE_MALLOC_FAILED ;
@@ -1030,7 +1043,7 @@ wavlike_subchunk_parse (SF_PRIVATE *psf, int chunk, uint32_t chunk_length)
 								i++ ;
 
 							if (i < psf->cues->cue_count)
-								strncpy (psf->cues->cue_points [i].name, buffer, 256) ;
+								memcpy (psf->cues->cue_points [i].name, buffer, sizeof (psf->cues->cue_points [i].name)) ;
 							} ;
 						} ;
 					break ;
@@ -1180,6 +1193,11 @@ wavlike_read_peak_chunk (SF_PRIVATE * psf, size_t chunk_size)
 		return SFE_WAV_BAD_PEAK ;
 		} ;
 
+	if (psf->peak_info)
+	{	psf_log_printf (psf, "*** Found existing peak info, using last one.\n") ;
+		free (psf->peak_info) ;
+		psf->peak_info = NULL ;
+		} ;
 	if ((psf->peak_info = peak_info_calloc (psf->sf.channels)) == NULL)
 		return SFE_MALLOC_FAILED ;
 
@@ -1251,7 +1269,7 @@ exif_fill_and_sink (SF_PRIVATE *psf, char* buf, size_t bufsz, size_t toread)
 */
 static int
 exif_subchunk_parse (SF_PRIVATE *psf, uint32_t length)
-{	uint32_t marker, dword, vmajor = -1, vminor = -1, bytesread = 0 ;
+{	uint32_t marker, dword = 0, vmajor = -1, vminor = -1, bytesread = 0 ;
 	char buf [4096] ;
 	int thisread ;
 
