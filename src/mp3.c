@@ -102,10 +102,12 @@ mp3_open (SF_PRIVATE *psf)
 		psf->dataoffset = 0 ;
 		} ;
 
+#if 0
 	if (psf->file.mode == SFM_READ)
 	{	if ((error = mpeg_decoder_init (psf)))
 			return error ;
 		} ;
+#endif
 
 	psf->command = mp3_command ;
 
@@ -150,9 +152,11 @@ mp3_command (SF_PRIVATE *psf, int command, void *data, int datasize)
 			return mpeg_l3_encoder_set_bitrate_mode (psf, bitrate_mode) ;
 
 		case SFC_GET_BITRATE_MODE :
+#if 0
 			if (psf->file.mode == SFM_READ)
 				return mpeg_decoder_get_bitrate_mode (psf) ;
 			else
+#endif
 				return mpeg_l3_encoder_get_bitrate_mode (psf) ;
 
 		default :
